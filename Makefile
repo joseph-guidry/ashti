@@ -14,4 +14,4 @@ profile: CFLAGS += -pg
 profile: all
 
 clean:
-	rm -f ashti *.o
+	rm -f ashti 
