@@ -15,7 +15,6 @@
 #include <poll.h>
 
 #define MAX_CONNECTS 500
-#define LISTEN_QUEUE 5
 #define MAX_BUFFER 512
 #define PATH_LENGTH 100
 
@@ -31,16 +30,14 @@ int main(int argc, char **argv)
 {
 	struct sockaddr_in6 clntAddr;
 	int sockfd;
-	static struct linger lg = { 1, 0 };
-
 	unsigned int addrLen;
 
-	char buffer[128]; // FOR printing out the IPv6 address
+	char buffer[128]; // FOR printing out the IPv6 address and error buffer
 	int connection_id = 0;
 
 	if (argc != 2 )
 	{
-		perror("Invalid Usage");
+		fprintf(stderr, "Invalid Usage: %s <root_directory>\n", argv[0]);
 		exit(1);
 	}
 
@@ -70,8 +67,6 @@ int main(int argc, char **argv)
 			if (inet_ntop(AF_INET6, &clntAddr, buffer, sizeof(buffer)) != NULL)
 				printf("Incoming connection from [%s]\n", buffer);
 
-		    //setsockopt(connections[connection_id], SOL_SOCKET, SO_KEEPALIVE, 0, 0);
-   			//setsockopt(connections[connection_id], SOL_SOCKET, SO_LINGER, (void *)&lg, sizeof lg);
 			switch(fork()) 
 			{
 				default:
@@ -84,16 +79,15 @@ int main(int argc, char **argv)
 					exit(-4);
 				case 0:
 					if(fork()) 
-						exit(0);	/* orphan grandchild process */
+						exit(0);
 					http_response(connection_id);
-					sleep(1);		   	/* make sure the data are read before the disconnect occurs */
+					sleep(1);
 					exit(0);
 			}
 		}
 		while(connections[connection_id] != -1 )
 			connection_id = (connection_id + 1) % MAX_CONNECTS;
 	}
-	free(root_path);
 	return 0;
 }
 
@@ -106,10 +100,6 @@ void http_response(int connection_id)
 	memset(http_request_buffer, (int)'\0', MAX_BUFFER);
 
 	byte_recv = recv(connections[connection_id], http_request_buffer, MAX_BUFFER - 1, 0);
-		
-	
-	//printf("Doing a HTTP response? %d\n", byte_recv);
-	//printf("%s\n", http_request_buffer);
 	if ( byte_recv < 0)
 	{
 		perror("recv () error failure");
@@ -128,27 +118,15 @@ void http_response(int connection_id)
 		http_header[1] = strtok(NULL, " \n\t");
 		http_header[2] = strtok(NULL, " \n\t");
 
-		if ( strstr(http_header[1], ".ico") != NULL)
-		{
-			return;
-		}
-
-		printf("Item 1 = [%s]\n", http_header[0]);
-
 		if (strcmp(http_header[0], "GET") == 0)
 		{
-			printf("GOT A GET REQUEST\n");
-			
-			printf("Looking for [%s]\n", http_header[1]);
-
 			/* CHECK FOR VALID PROTOCOL */
-			if (strncmp(http_header[2], "HTTP/1.1", 8) != 0 && strncmp(http_header[2], "HTTP/1.0", 8) != 0 )
+			if (strncmp(http_header[2], "HTTP/1.1\r", 9) != 0 && strncmp(http_header[2], "HTTP/1.0\r", 9) != 0 )
 			{
 				http_error_response(connection_id, 400, data);
 			}
 			else
 			{
-				printf("or here\n");				
 				if (strncmp(http_header[1], "/\0", 2) == 0)
 					http_header[1] = strdup("/index.html");
 
@@ -156,14 +134,12 @@ void http_response(int connection_id)
 				{
 					send(connections[connection_id], "HTTP/1.1 200 OK\r\n", 17, 0);
 					snprintf(local_path, PATH_LENGTH, "%s%s", root_path, http_header[1]);
-					printf("CGI Script\n");
 					run_cgi_script(connection_id, local_path, data);
 				}
 				else if (strstr(http_header[1], ".html") != NULL)
 				{
 					/* This is under the www file ( Move this to its own function? ) */
 					snprintf(local_path, PATH_LENGTH, "%s%s%s", root_path, "/www", http_header[1]);
-					printf("new path for www files = [%s]\n", local_path);
 					if( (docfd = open(local_path, O_RDONLY)) != -1)
 					{
 						send(connections[connection_id], "HTTP/1.1 200 OK\r\n", 17, 0);
@@ -171,36 +147,31 @@ void http_response(int connection_id)
 
 						while( (read_size = read(docfd, data, MAX_BUFFER -1 )) > 0)
 						{
-							printf("writing\n");
 							data[MAX_BUFFER] = '\0';
 							write(connections[connection_id], data, read_size);
 						}
 					}
 					else
 					{
-						printf("ERROR %d\n", docfd);
 						http_error_response(connection_id, 404, data);
 					}
 				}
 				else
 				{
 					printf("extensions that are not handled by this program ... log it maybe\n");
+					http_error_response(connection_id, 500, data);
 				}
 			}
 		}
 		else if (strcmp(http_header[0], "POST") == 0)
 		{
-			printf("GOT A POST REQUEST\n");
-			printf("Looking for [%s]\n", http_header[1]);
-
 			/* CHECK FOR VALID PROTOCOL */
-			if (strncmp(http_header[2], "HTTP/1.1", 8) != 0 && strncmp(http_header[2], "HTTP/1.0", 8) != 0 )
+			if (strncmp(http_header[2], "HTTP/1.1\r", 9) != 0 && strncmp(http_header[2], "HTTP/1.0\r", 9) != 0 )
 			{
 				http_error_response(connection_id, 400, data);
 			}
 			else
 			{
-				printf("or here\n");				
 				if (strncmp(http_header[1], "/\0", 2) == 0)
 					http_header[1] = strdup("/index.html");
 
@@ -214,13 +185,13 @@ void http_response(int connection_id)
 				}
 				else
 				{
-					http_error_response(connection_id, 400, data);
+					http_error_response(connection_id, 404, data);
 				}
 			}
 		}
 		else
 		{
-			http_error_response(connection_id, 405, data);
+			http_error_response(connection_id, 500, data);
 		}
 	}
 	shutdown(connections[connection_id], SHUT_RDWR);
@@ -230,39 +201,35 @@ void http_response(int connection_id)
 
 void http_error_response(int connection_id, int error, char * data)
 {
-
-	printf("ERROR RESPONSE\n");
 	char * local_path = malloc(PATH_LENGTH);
 	char * error_file;
 	int docfd, read_size;
 
 	switch(error)
 	{
-	case 400:
-		send(connections[connection_id], "HTTP/1.1 400 Bad Request\r\n", 26, 0);
-		error_file = strdup("400.html");
-		break;
-	case 404:
-		send(connections[connection_id], "HTTP/1.1 404 Not Found\r\n", 24, 0);
-		error_file = strdup("404.html");
-		break;
-	case 500:
-		send(connections[connection_id], "HTTP/1.1 500 Internal Server Error\r\n", 36, 0);
-		error_file = strdup("500.html");
-		break;
-	default:
-		send(connections[connection_id], "HTTP/1.1 403 Forbidden\r\n", 24, 0);
-		error_file = strdup("403.html");
+		case 400:
+			send(connections[connection_id], "HTTP/1.1 400 Bad Request\r\n", 26, 0);
+			error_file = strdup("400.html");
+			break;
+		case 404:
+			send(connections[connection_id], "HTTP/1.1 404 Not Found\r\n", 24, 0);
+			error_file = strdup("404.html");
+			break;
+		case 500:
+			send(connections[connection_id], "HTTP/1.1 500 Internal Server Error\r\n", 36, 0);
+			error_file = strdup("500.html");
+			break;
+		default:
+			send(connections[connection_id], "HTTP/1.1 403 Forbidden\r\n", 24, 0);
+			error_file = strdup("403.html");
 	}
-	send(connections[connection_id], "Content-Type: text/html\r\n\r\n", 27, 0);
 
+	send(connections[connection_id], "Content-Type: text/html\r\n\r\n", 27, 0);
 	snprintf(local_path, PATH_LENGTH, "%s%s%s", root_path, "/error/", error_file);
-	printf("local path = %s\n", local_path);
 	if( (docfd = open(local_path, O_RDONLY)) != -1)
 	{
 		while( (read_size = read(docfd, data, MAX_BUFFER -1 )) > 0)
 		{
-			printf("writing\n");
 			data[MAX_BUFFER] = '\0';
 			write(connections[connection_id], data, read_size);
 		}
@@ -271,7 +238,7 @@ void http_error_response(int connection_id, int error, char * data)
 	{
 		printf("ERROR %d\n", docfd);
 	}
-
+	close(docfd);
 	free(local_path);
 }
 
@@ -281,7 +248,6 @@ void run_cgi_script(int connection_id, char * local_path, char * data)
 	int read_pipe[2], write_pipe[2];
 	pid_t childpid;
 
-	printf("run CGI Script [%s]\n", local_path);
 	if ( pipe(read_pipe) < 0 || pipe(write_pipe) < 0)
 	{
 		printf("PIPE FAILED");
@@ -293,17 +259,13 @@ void run_cgi_script(int connection_id, char * local_path, char * data)
 	}
 	else if (childpid == 0)
 	{
-		printf("were going to run a cgi script\n");
-		printf("execute file %s : %s \n", local_path, strrchr(local_path, '/') + 1); 
 		close(read_pipe[0]);
 		close(write_pipe[1]);
 
 		dup2(write_pipe[0], 0); /* the read end of the first pipe is p1[0] -- copy it to stdin */
 		dup2(read_pipe[1], 1);  /* the read end of the first pipe is p1[0] -- copy it to stdin */
 
-		
-
-		execl(local_path,  strrchr(local_path, '/') + 1, NULL, NULL); /* this is where to put the other HTTP stuff */
+		execl(local_path,  strrchr(local_path, '/') + 1, NULL, NULL);
 		perror("execl of date failed");
 		http_error_response(connection_id, 404, data);
 		exit(-44);
@@ -313,16 +275,15 @@ void run_cgi_script(int connection_id, char * local_path, char * data)
 		close(write_pipe[0]);
 		close(read_pipe[1]);
 		sleep(1);
-		printf("can we try to write this\n");
 		while( (read_size = read(read_pipe[0], data, MAX_BUFFER -1 )) > 0)
 		{
-			printf("writing\n");
 			data[MAX_BUFFER] = '\0';
 			write(connections[connection_id], data, read_size);
 		}
 	}
 }
 
+/* Start a TCP server on localhost using IPv6 and Port: UID */
 int http_server(void)
 {
 	int sockfd, option = 1;
@@ -338,13 +299,11 @@ int http_server(void)
 	}
 
 	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
-
 	memset(&srvAddr, 0, sizeof(struct sockaddr_in6));
 	srvAddr.sin6_family = AF_INET6;
 	srvAddr.sin6_flowinfo = 0;
 	srvAddr.sin6_addr = in6addr_loopback;
 	srvAddr.sin6_port = htons(srvPort);
-
 
 	if (bind(sockfd, (struct sockaddr *)&srvAddr, sizeof(srvAddr)) < 0 )
 	{
@@ -352,13 +311,11 @@ int http_server(void)
 		exit(1);
 	}
 
-	if (listen(sockfd, LISTEN_QUEUE) == -1)
+	if (listen(sockfd, SOMAXCONN) == -1)
 	{
 		perror("bind () error");
 		exit(1);
 	}
-
 	printf("Starting Server on Port:[%d]\n", srvPort);
-
 	return sockfd;
 }
