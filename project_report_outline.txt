@@ -1,0 +1,78 @@
+Name: Joseph Guidry
+Date: 1-20-2018
+Current Module: Network Programming in C
+Project Name: Ashti
+
+Project Goals:
+	<A two to three sentence description of the project and its intent>
+	The project highlighter the skills needed to write a web server, using TCP sockets.  It would server static and dynamic web-page
+	to the clients browser.  
+
+Considerations:
+	<A bulleted list of considerations and conditions which affected the design of your project>
+	-Create a TCP server with max connections - based on Hardware.
+	- Handle concurrent client connections.
+	- Serve back to the client an appropriate response.
+	
+Initial Design:
+	<A paragraph or more that adequately describes your program's structure and layout discussing the various modules (.c and corresponding .h files) that you implemented>
+	Initially, the web server was designed to handle certain file extensions, HTTP methods and ensure the proper protocol was being
+	used. This program uses a file structure of a typical web-server, holding static HTML files and placing executable files in the CGI
+	directory. Other files are as a requirement bases. 
+	
+	ashti.c:
+		This contains all the functions that were required to attempt to produce expected output.
+
+		int http_server(void);
+			-Established the TCP socket.
+		
+		void http_response(int connection_id);
+			- Parsed and handled the expected HTTP request. 
+
+		void http_error_response(int connection_id, int error, char * data);
+			- This attempts to respond to errors with HTML error response pages.
+
+		void run_cgi_script(int connection_id, char * local_path, char * data);
+			- This would attempt to run a CGI script and pipe its output back to the client. 
+
+Data Flow:
+	<A paragraph or longer describing the data flow of the program in a sequential manner.  Include a diagram when necessary.>
+	The program would execute, ensuring the directory is given that would hold the web server files. The program uses an array of
+	connections, this would allow the server to maintain concurrency while providing clients access to data.  
+	The program initializes the web server, with a single TCP socket, then enters an infinite loop.
+
+	The program accepts an incoming connection, then forks the process to allow the grandchild to handle the request. 
+	This allows the parent to continue to receive new connections. The process will handle the HTTP response based on the request
+	header information.  Static HTML is read back to the client, while CGI scripts are executed, then output is returned to the client.
+	Errors that are received, attempt to return a HTML error page. 	
+	
+Communication Protocol:
+	<Discuss any custom communication protocol you have used including the various request and responses that may be sent and received.>
+	This project took advantage of TCP sockets and pipes for CGI script output. 
+
+Potential Pitfalls:
+	<Discuss any potential issues that you might run into while creating the project>
+	- Build relevant HTML and CGI pages to access.
+	- Creating CGI scripts and passing arguments to create dynamic web pages.
+	- Parsing and error checking HTTP request headers.
+
+Test Plan:
+	User Test:
+ 		<Describe the steps taken for each user test.>
+		Attempt to use the required support scenarios from the requirements document.
+		Attempt to replicate this support in a web browser.
+		Build .cgi and .html pages to help with testing.
+	Test Cases:
+		<A brief overview of the test cases that you implemented.>
+		Pipe echo commands into netcat client.
+		Open web browser and navigate to home page. 
+
+Conclusion:
+	<A review of the project, what worked, what didn’t and how to improve upon your project in the future.>
+
+	This was a very interesting project, digging into the intricate parts of a web-server. A section on how a web-server interacts 
+	with network request would have been helpful. In the end, this project was enjoyable, once there was traction on concepts to
+	get some of the main requirement were understood. This project would be better suited being done prior to the SQL section of the course.
+
+
+
