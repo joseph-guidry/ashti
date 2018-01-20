@@ -233,76 +233,43 @@ void http_error_response(int connection_id, int error, char * data)
 
 	printf("ERROR RESPONSE\n");
 	char * local_path = malloc(PATH_LENGTH);
-	int read_size;
-	char *arg[3];
-	int read_pipe[2], write_pipe[2];
-	pid_t childpid;
+	char * error_file;
+	int docfd, read_size;
 
 	switch(error)
 	{
 	case 400:
-		arg[0] = strdup("400");
-		arg[1] = strdup("Bad Request");
 		send(connections[connection_id], "HTTP/1.1 400 Bad Request\r\n", 26, 0);
+		error_file = strdup("400.html");
 		break;
 	case 404:
-		arg[0] = strdup("404");
-		arg[1] = strdup("Not Found");
 		send(connections[connection_id], "HTTP/1.1 404 Not Found\r\n", 24, 0);
+		error_file = strdup("404.html");
 		break;
 	case 500:
-		arg[0] = strdup("500");
-		arg[1] = strdup("Internal Server Error");
 		send(connections[connection_id], "HTTP/1.1 500 Internal Server Error\r\n", 36, 0);
+		error_file = strdup("500.html");
 		break;
 	default:
-		arg[0] = strdup("403");
-		arg[1] = strdup("Forbidden");
 		send(connections[connection_id], "HTTP/1.1 403 Forbidden\r\n", 24, 0);
-
+		error_file = strdup("403.html");
 	}
-
 	send(connections[connection_id], "Content-Type: text/html\r\n\r\n", 27, 0);
 
-	printf("CGI Script [%s]\n", root_path);
-	if ( pipe(read_pipe) < 0 || pipe(write_pipe) < 0)
+	snprintf(local_path, PATH_LENGTH, "%s%s%s", root_path, "/error/", error_file);
+	printf("local path = %s\n", local_path);
+	if( (docfd = open(local_path, O_RDONLY)) != -1)
 	{
-		printf("PIPE FAILED");
-	}
-
-	if ( (childpid = fork()) < 0)
-	{
-		perror("fork() fail");
-	}
-	else if (childpid == 0)
-	{
-		//printf("were going to run a error.cgi script\n");
-		close(read_pipe[0]);
-		close(write_pipe[1]);
-
-		dup2(write_pipe[0], 0);
-		dup2(read_pipe[1], 1);
-		//printf("here");
-		snprintf(local_path, PATH_LENGTH, "%s%s", root_path, "/error.cgi");
-		//printf("execute file %s %s %s \n", local_path, arg[0], arg[1]);
-
-		//printf("execute file %s : %s \n", root_path, strrchr(local_path, '/') + 1); 
-		execlp(local_path, "./error.cgi", arg[0], arg[1], NULL);
-		perror("execl of error.cgi failed");
-		exit(-44);
-	}
-	else
-	{
-		close(write_pipe[0]);
-		close(read_pipe[1]);
-		sleep(1);
-		printf("can we try to write this\n");
-		while( (read_size = read(read_pipe[0], data, MAX_BUFFER -1 )) > 0)
+		while( (read_size = read(docfd, data, MAX_BUFFER -1 )) > 0)
 		{
 			printf("writing\n");
 			data[MAX_BUFFER] = '\0';
 			write(connections[connection_id], data, read_size);
 		}
+	}
+	else
+	{
+		printf("ERROR %d\n", docfd);
 	}
 
 	free(local_path);
